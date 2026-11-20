@@ -11,7 +11,7 @@
  *   - the API key is never printed or logged
  */
 
-import { promises as fs, createWriteStream, existsSync } from "node:fs";
+import { promises as fs, createWriteStream, existsSync, readFileSync } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { dirname, extname, join, resolve, basename } from "node:path";
@@ -106,16 +106,41 @@ const num = (v, d) => {
   return Number.isFinite(n) ? n : d;
 };
 
+const KEY_VAULT = process.env.AGNES_KEY_FILE || join(homedir(), ".agnes-arena", "key");
+
+/**
+ * Resolve the API key. Environment first (so CI and explicit exports win),
+ * then the local vault written by `agnes-key set`.
+ * Never returns a key for logging, and never writes one anywhere.
+ */
 function requireKey() {
-  const key = process.env.AGNES_API_KEY;
-  if (!key || !key.trim()) {
-    throw new CliError(
-      "AUTH_MISSING",
-      "AGNES_API_KEY is not set. Create one at https://platform.agnes-ai.com/settings/apiKeys\n" +
-        "then export it in the shell you run this from. The key is never written to this repo.",
-    );
+  const envKey = process.env.AGNES_API_KEY;
+  if (envKey && envKey.trim()) return envKey.trim();
+
+  if (existsSync(KEY_VAULT)) {
+    try {
+      const saved = readFileSync(KEY_VAULT, "utf8").trim();
+      if (saved) return saved;
+    } catch {
+      /* fall through to the error below */
+    }
   }
-  return key.trim();
+
+  throw new CliError(
+    "AUTH_MISSING",
+    "No Agnes API key found.\n" +
+      "  Option A (recommended, nothing to copy into chat):\n" +
+      "      node bin/agnes-key.mjs set        # masked prompt, saved to " + KEY_VAULT + "\n" +
+      "  Option B: export AGNES_API_KEY in the shell that runs this command.\n" +
+      "Get a key at https://platform.agnes-ai.com/settings/apiKeys (shown once).",
+  );
+}
+
+/** Where the key came from, for diagnostics. Never the key itself. */
+export function keySource() {
+  if (process.env.AGNES_API_KEY?.trim()) return "env:AGNES_API_KEY";
+  if (existsSync(KEY_VAULT)) return `vault:${KEY_VAULT}`;
+  return "none";
 }
 
 /* ------------------------------------------------------------------- inputs */
@@ -483,12 +508,13 @@ ENVIRONMENT
 }
 
 async function cmdDoctor({ flags }) {
-  const key = process.env.AGNES_API_KEY;
+  const key = process.env.AGNES_API_KEY?.trim() || (existsSync(KEY_VAULT) ? readFileSync(KEY_VAULT, "utf8").trim() : "");
   const base = process.env.AGNES_BASE_URL || DEFAULT_BASE;
   const pollBase = process.env.AGNES_POLL_BASE_URL || DEFAULT_POLL_BASE;
   const report = {
     node: process.version,
-    key: key ? `present (${key.length} chars, ${key.slice(0, 3)}…)` : "MISSING",
+    key: key ? `present (${key.length} chars)` : "MISSING",
+    keySource: keySource(),
     baseUrl: base,
     pollBaseUrl: pollBase,
     defaultModel: FREE_MODEL,
@@ -502,6 +528,7 @@ async function cmdDoctor({ flags }) {
     console.log("Agnes video bridge — doctor");
     console.log(`  node           ${report.node}`);
     console.log(`  API key        ${report.key}`);
+    console.log(`  key source     ${report.keySource}`);
     console.log(`  base URL       ${report.baseUrl}`);
     console.log(`  poll base      ${report.pollBaseUrl}`);
     console.log(`  default model  ${report.defaultModel} (free trial)`);

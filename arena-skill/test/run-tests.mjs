@@ -5,16 +5,18 @@
  *   node test/run-tests.mjs
  */
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { tmpdir } from "node:os";
 import { createMock } from "./mock-agnes.mjs";
 
 const run = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = join(HERE, "..", "bin", "agnes-video.mjs");
+const KEYCLI = join(HERE, "..", "bin", "agnes-key.mjs");
 const TMP = join(HERE, ".tmp");
 
 const KEY = "test-key-abc123";
@@ -38,6 +40,21 @@ async function cli(args, env = {}) {
   } catch (err) {
     return { code: err.code ?? 1, stdout: err.stdout ?? "", stderr: err.stderr ?? "" };
   }
+}
+
+async function keycli(args, env = {}, stdin = "") {
+  return new Promise((res) => {
+    const child = spawn(process.execPath, [KEYCLI, ...args], {
+      env: { ...process.env, ...env },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "", stderr = "";
+    child.stdout.on("data", (d) => { stdout += d; });
+    child.stderr.on("data", (d) => { stderr += d; });
+    child.on("close", (code) => res({ code, stdout, stderr }));
+    if (stdin) child.stdin.write(stdin);
+    child.stdin.end();
+  });
 }
 
 const PNG = Buffer.from(
@@ -312,6 +329,67 @@ async function main() {
     check("dry run shows the payload", out.payload.model === "agnes-video-2.5-flash");
     check("dry run shows the poll url with model_name", /model_name=agnes-video-2.5-flash/.test(out.poll));
     check("dry run never sends retired params", !("num_frames" in out.payload) && !("frame_rate" in out.payload));
+  }
+
+  /* ------------------------------------------------------------ key vault */
+  console.log("\nkey vault");
+  {
+    const vault = join(await fs.mkdtemp(join(tmpdir(), "agnesvault-")), "key");
+    // Must be the key the mock accepts, so the vault-key auth path is really exercised.
+    const KEY = "vault-test-key-abc123";
+    const venv = { AGNES_KEY_FILE: vault, AGNES_API_KEY: "" };
+
+    const before = await keycli(["status"], venv);
+    check("status works with no vault", before.code === 0 && /not created/.test(before.stdout));
+
+    const set = await keycli(["set"], venv, `${KEY}\n`);
+    check("set stores a piped key", set.code === 0, set.stderr);
+    check("set does not echo the key", !set.stdout.includes(KEY) && !set.stderr.includes(KEY));
+
+    const st = await fs.stat(vault);
+    check("vault mode is 0600", (st.mode & 0o777) === 0o600, (st.mode & 0o777).toString(8));
+
+    const content = await fs.readFile(vault, "utf8");
+    check("vault holds exactly the key", content.trim() === KEY);
+
+    const status = await keycli(["status"], venv);
+    check("status reports a configured key", /present \(\d+ chars\)/.test(status.stdout), status.stdout);
+    check("status never prints the key", !status.stdout.includes(KEY));
+    check("status reports mode 600 as ok", /600 \(ok\)/.test(status.stdout), status.stdout);
+
+    const envOut = await keycli(["env"], venv);
+    check("env prints a usable export", envOut.stdout.includes("export AGNES_API_KEY="), envOut.stdout);
+
+    // The skill must pick the key up from the vault with no env var set.
+    const dr = await cli(["doctor", "--json"], { ...venv, AGNES_BASE_URL: base, AGNES_POLL_BASE_URL: pollBase,
+      AGNES_GENERATED_DIR: GENERATED });
+    const dj = JSON.parse(dr.stdout);
+    check("doctor resolves the key from the vault", dj.keySource.startsWith("vault:"), dj.keySource);
+    // The mock accepts only the test key; a non-matching vault key must give 401.
+    check("vault key is actually sent to the API", dj.preflight?.status === 401, JSON.stringify(dj.preflight));
+
+    const cleared = await keycli(["clear"], venv);
+    check("clear removes the vault", cleared.code === 0 && !(await fs.stat(vault).catch(() => null)));
+    const afterClear = await keycli(["status"], venv);
+    check("status reflects the cleared state", /not created/.test(afterClear.stdout));
+  }
+  {
+    // A vault inside the repo would be committable: must be refused outright.
+    const insideRepo = join(HERE, "..", ".leak-test-key");
+    const r = await keycli(["set"], { AGNES_KEY_FILE: insideRepo, AGNES_API_KEY: "" }, "some-key-1234567890abcd\n");
+    check("vault inside a git repo is refused", r.code === 1 && /Refusing to write the key inside a git repository/.test(r.stderr), r.stderr.slice(0, 200));
+    check("nothing was written inside the repo", !(await fs.stat(insideRepo).catch(() => null)));
+  }
+  {
+    const vault = join(await fs.mkdtemp(join(tmpdir(), "agnesvault-")), "key");
+    const short = await keycli(["set"], { AGNES_KEY_FILE: vault, AGNES_API_KEY: "" }, "short\n");
+    check("implausibly short key rejected", short.code === 1 && /does not look like an API key/.test(short.stderr));
+    check("rejected key is not written", !(await fs.stat(vault).catch(() => null)));
+  }
+  {
+    const vault = join(await fs.mkdtemp(join(tmpdir(), "agnesvault-")), "key");
+    const spaced = await keycli(["set"], { AGNES_KEY_FILE: vault, AGNES_API_KEY: "" }, "has spaces in it here\n");
+    check("keys containing spaces rejected", spaced.code === 1);
   }
 
   /* -------------------------------------------------------------- security */

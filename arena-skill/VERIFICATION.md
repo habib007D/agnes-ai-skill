@@ -6,7 +6,7 @@ Two different claims are made below. They are **not** the same claim.
 
 | Claim | Status |
 | --- | --- |
-| The integration's protocol handling, safety guards, and file pipeline are implemented and tested | **Verified** — 83 automated tests pass |
+| The integration's protocol handling, safety guards, and file pipeline are implemented and tested | **Verified** — 101 automated tests pass |
 | A real Agnes MP4 was generated from this sandbox | **Not verified — impossible here.** Egress to Agnes is blocked |
 
 Do not read the first row as the second.
@@ -15,10 +15,10 @@ Do not read the first row as the second.
 
 ## What was run, and the result
 
-### 1. Automated suite — 83/83
+### 1. Automated suite — 101/101
 
 ```
-node test/run-tests.mjs   ->   83 passed, 0 failed
+node test/run-tests.mjs   ->   101 passed, 0 failed
 ```
 
 The suite executes the real CLI as a subprocess against
@@ -47,6 +47,7 @@ Coverage by area:
 | Dry run | zero create requests sent; payload and poll URL shown |
 | Ledger | run count and spend tracked locally |
 | Key hygiene | absent from stdout/stderr, from the plugin tree, and from the artifacts dir |
+| Key vault | mode 600; refuses paths inside a git repo; rejects short or spaced keys; `status`/`env`/`clear` never reveal the key; the skill authenticates from the vault with no env var |
 
 ### 2. Live probe — documented failure, no false success
 
@@ -76,7 +77,16 @@ Egress measurement from this sandbox:
 The allowlist excludes every Agnes host, so no live generation is possible
 here. `live-smoke-test.sh` performs that verification wherever egress exists.
 
-### 3. Installability
+### 3. Secrets capability — checked, not assumed
+
+| Checked | Finding |
+| --- | --- |
+| Arena Agent Mode secrets/env-var UI | No documented feature; Arena's Agent Mode announcement lists only web search, image gen, file upload, coding, bash |
+| `~/.arena` or any Arena config in the sandbox | absent |
+| `AGNES_API_KEY` injected by the platform | not set (env has only E2B/GitHub variables) |
+| Result | No platform secrets store exists to use; the vault in `bin/agnes-key.mjs` is the alternative |
+
+### 4. Installability
 
 `./install.sh /tmp/skilltest` installed the skill (SKILL.md, bin, lib, test,
 manifests) and the installed copy ran `doctor` correctly. All manifests parse

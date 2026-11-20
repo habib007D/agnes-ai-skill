@@ -239,21 +239,38 @@ word. Input images: first 5 free, then $0.005 each.
 
 ## Missing key
 
-Do not proceed with live calls. Tell the user:
+**Arena Agent Mode has no secrets manager or environment-variable screen.**
+This was checked: Arena's own Agent Mode announcement lists only web search,
+image generation, file upload, coding help and a bash sandbox, and the sandbox
+contains no `.arena` config and no injected `AGNES_API_KEY`. Do not send the
+user hunting for a settings page that does not exist, and do not claim one exists.
 
-1. Create a key at <https://platform.agnes-ai.com/settings/apiKeys>
-   (Settings → API Keys → Create new secret key). It is shown once.
-2. Put it in the environment of the shell that runs the generation:
+Never ask the user to paste the key into chat. Use the vault:
 
-   ```bash
-   export AGNES_API_KEY='...'   # their own terminal, not a repo file
-   ```
+```bash
+node bin/agnes-key.mjs set      # masked prompt in the terminal; key never echoed
+node bin/agnes-video.mjs doctor # verify
+```
 
-   or in Arena, add it as a secret/env var in the session settings.
-3. Re-run `doctor`.
+`agnes-key set` rules, which you must not circumvent:
 
-Never ask them to paste the key into chat, and never write it into a tracked
-file. If they do paste it, use it for the session, and tell them to rotate it.
+- reads from a hidden prompt or stdin, never from an argument (no shell history,
+  no process list)
+- refuses any path inside a git repository, so the key cannot be committed
+- writes mode `0600`
+- states plainly that the file is permission-protected, not encrypted
+
+The skill resolves the key from `AGNES_API_KEY` first, then the vault, so both
+`agnes-key set` and a plain `export` work. If the user explicitly prefers an
+export, that is fine for one session: give them
+`export AGNES_API_KEY='...'` to run themselves.
+
+If the user pastes a key into chat anyway: do not echo it, use it for the
+session only, do not write it to disk, and tell them to rotate it at
+platform.agnes-ai.com. A key that has been in a chat transcript should be
+considered burned.
+
+Full walkthrough, including the phone-only path: [`KEY-SETUP.md`](./KEY-SETUP.md).
 
 ---
 
@@ -314,6 +331,9 @@ These exist because it is easy to be plausible and wrong here:
 ## Reference
 
 ```
+bin/agnes-key.mjs set     store the key in the local vault (masked)
+bin/agnes-key.mjs status  is a key configured, and from where
+bin/agnes-key.mjs clear   delete the stored key
 doctor                    key + preflight health
 quota                     preflight + local ledger (not a server balance)
 prompt                    compile a brief into one Agnes prompt (offline)

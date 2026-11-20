@@ -35,20 +35,22 @@ node arena-skill/bin/agnes-video.mjs doctor
 
 ## Configure the key (once)
 
-1. Create a key: <https://platform.agnes-ai.com/settings/apiKeys>
-   (Settings → API Keys → Create new secret key — shown once).
-2. Export it in the environment that runs the generation:
+Arena Agent Mode has **no secrets manager or environment-variable screen** — so
+there is nothing to configure in the UI. Use the vault:
 
-   ```bash
-   export AGNES_API_KEY='...'
-   ```
+```bash
+node bin/agnes-key.mjs set      # hidden prompt; nothing is echoed or logged
+node bin/agnes-video.mjs doctor
+```
 
-   In Arena, add it in the session's environment/secrets settings instead.
-3. `node bin/agnes-video.mjs doctor` → should print `preflight ok`.
+Get the key at <https://platform.agnes-ai.com/settings/apiKeys> (shown once).
 
-The key is only ever read from `process.env`. It is never written to disk, never
-printed, and every error path runs it through a redactor. There is no config
-file to leak.
+The vault is a `0600` file outside the repo. `agnes-key` refuses to store a key
+inside a git repository, never takes the key as a command-line argument, and
+says plainly that the file is permission-protected rather than encrypted.
+`AGNES_API_KEY` in the environment still works and takes precedence.
+
+Phone-friendly walkthrough: [`KEY-SETUP.md`](./KEY-SETUP.md).
 
 ## Use
 
@@ -105,7 +107,7 @@ says this rather than pretending to know your balance.
 
 ```bash
 node bin/agnes-video.mjs doctor      # environment
-node test/run-tests.mjs              # 83 protocol + safety tests, no network
+node test/run-tests.mjs              # 101 protocol + safety + vault tests, no network
 ```
 
 The test suite runs the real CLI against a mock that enforces the documented
@@ -116,6 +118,8 @@ The test suite runs the real CLI against a mock that enforces the documented
 ```
 SKILL.md              the skill an agent reads
 bin/agnes-video.mjs   the implementation (zero dependencies)
+bin/agnes-key.mjs     local key vault (masked input, mode 600)
+KEY-SETUP.md          phone-friendly key setup guide
 lib/prompt.mjs        prompt compiler + scene planner (offline)
 test/                 protocol-conformance and safety suite
 FINDINGS.md           verified evidence for the claims above
