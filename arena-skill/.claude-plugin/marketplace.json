@@ -1,0 +1,11 @@
+{
+  "name": "agnes-ai-skill",
+  "owner": { "name": "habib007D" },
+  "plugins": [
+    {
+      "name": "agnes-video",
+      "source": "./",
+      "description": "Agnes AI video production for Arena Agent Mode: idea or image in, finished MP4 out, free-tier protected."
+    }
+  ]
+}

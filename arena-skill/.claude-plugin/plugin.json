@@ -1,0 +1,10 @@
+{
+  "name": "agnes-video",
+  "version": "1.0.0",
+  "description": "Idea or image in, finished MP4 out: Agnes AI text-to-video and image-to-video with automatic polling, download, and a hard free-tier cost guard.",
+  "author": { "name": "habib007D" },
+  "homepage": "https://github.com/jomeswang/agnes-ai-skill",
+  "repository": "https://github.com/habib007D/agnes-ai-skill",
+  "license": "MIT",
+  "keywords": ["agnes", "video-generation", "image-to-video", "text-to-video", "storyboard"]
+}

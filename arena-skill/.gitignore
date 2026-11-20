@@ -1,0 +1,5 @@
+.agnes/
+output/
+test/.tmp/
+.env
+*.mp4
